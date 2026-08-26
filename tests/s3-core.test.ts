@@ -149,3 +149,19 @@ test("footer shows a readable runway suffix once a same-currency rate exists", a
 	const wrongCurrency = renderFooter(bal, bal.rows[0], { now: 0, theme: id, rate: { currency: "USD", perHour: 1 } });
 	assert.doesNotMatch(wrongCurrency, /≈/);
 });
+
+test("snapshot store compacts at 1000 lines to the newest 500", async () => {
+	const { createSnapshotStore } = await import("../extensions/deepseek-balance.ts");
+	let file = "";
+	const store = createSnapshotStore(
+		"/fake",
+		() => file,
+		(_p, s) => { file += s; },
+		(_p, s) => { file = s; },
+		() => {},
+	);
+	for (let i = 0; i < 1001; i++) store.append({ t: i, currency: "CNY", total: 1000 - i });
+	const lines = file.trim().split("\n");
+	assert.equal(lines.length, 500, "compacted");
+	assert.equal(JSON.parse(lines[0]).t, 501, "kept the newest");
+});

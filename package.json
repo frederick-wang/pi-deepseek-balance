@@ -1,6 +1,6 @@
 {
   "name": "pi-deepseek-balance",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "DeepSeek API account balance in the pi footer \u2014 CNY-correct currency selection, burn rate, low-balance alerts, /deepseek-balance report. Unofficial, not affiliated with DeepSeek.",
   "type": "module",
   "license": "MIT",

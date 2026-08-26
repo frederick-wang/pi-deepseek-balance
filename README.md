@@ -32,6 +32,7 @@ to any other provider.
 | --- | --- |
 | `¥377.89` | selected currency row's total balance |
 | `████░░░░` | 8-cell bar: runway-normalized once a burn rate exists (a full bar ≈ 12 h of runway); before that, balance against the warning band |
+| `≈9.0h` | estimated runway at the current burn rate, appended once a rate exists |
 | `~` | the displayed value is stale: the last refresh failed, the previous number is kept |
 | color | by runway when a rate exists (red < 2 h, yellow < 12 h); otherwise by absolute thresholds (defaults ¥20 / ¥5) |
 
@@ -40,7 +41,7 @@ mask a positive CNY row (a parser bug observed in other tools). Order:
 `PI_DEEPSEEK_BALANCE_CURRENCY` → first positive CNY row → first positive row
 → CNY if present.
 
-### Burn rate
+### Burn rate and runway
 
 The extension appends `{time, currency, total}` snapshots to
 `~/.pi/agent/pi-deepseek-balance-snapshots.jsonl` on every successful fetch.
@@ -48,8 +49,8 @@ A rate is shown only past a confidence gate: ≥3 snapshots, spanning ≥1 hour,
 in one currency, after the most recent top-up. Below the gate nothing is
 displayed. The rate is account-wide — it includes spend from any client
 sharing the key, not just this pi session. Top-ups reset the window instead
-of producing negative rates. Runway projection arrives in a later version;
-v0.1 collects data.
+of producing negative rates. Once a rate exists, the footer appends an
+estimated runway (`≈9.0h` at the current rate) and the bar scales to it.
 
 ### Threshold alerts
 

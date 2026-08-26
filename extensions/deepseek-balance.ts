@@ -205,7 +205,14 @@ export function renderFooter(balance: Balance, row: CurrencyRow, opts: FooterOpt
 	}
 	const stale = opts.stale ? "~" : "";
 	const pct = `${formatAmount(row.total)}${stale}`;
-	return `DS ${sym}${renderBar(fraction, theme, role)} ${theme.fg(role, pct)}`;
+	// Readable runway suffix once a same-currency rate exists (the bar's
+	// normalization stays implicit; this makes it explicit).
+	let runway = "";
+	if (opts.rate && opts.rate.currency === row.currency && opts.rate.perHour > 0) {
+		const hours = runwayHours(row.total, opts.rate.perHour);
+		if (hours !== null) runway = ` ${theme.fg("dim", `≈${formatRunway(hours)}`)}`;
+	}
+	return `DS ${sym}${renderBar(fraction, theme, role)} ${theme.fg(role, pct)}${runway}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -467,9 +474,9 @@ function formatWindow(snapshots: Snapshot[]): string {
 }
 
 function formatRunway(hours: number): string {
-	if (hours >= 24) return `${(hours / 24).toFixed(1)} d`;
-	if (hours >= 1) return `${hours.toFixed(1)} h`;
-	return `${Math.round(hours * 60)} min`;
+	if (hours >= 24) return `${(hours / 24).toFixed(1)}d`;
+	if (hours >= 1) return `${hours.toFixed(1)}h`;
+	return `${Math.round(hours * 60)}min`;
 }
 
 // ---------------------------------------------------------------------------

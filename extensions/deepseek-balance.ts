@@ -331,38 +331,59 @@ export interface SnapshotStore {
 	load(): Snapshot[];
 }
 
-export function createSnapshotStore(dir: string, readFile: (p: string) => string | null, appendFile: (p: string, s: string) => void): SnapshotStore {
+export function createSnapshotStore(
+	dir: string,
+	readFile: (p: string) => string | null,
+	appendFile: (p: string, s: string) => void,
+	writeFile: (p: string, s: string) => void,
+	rename: (from: string, to: string) => void,
+): SnapshotStore {
 	const file = nodePath.join(dir, "pi-deepseek-balance-snapshots.jsonl");
+	// Append-only between compactions: the file is rewritten (atomically:
+	// temp + rename) to the newest SNAPSHOT_KEEP entries once it exceeds
+	// twice that, so it never grows unboundedly.
+	const parseAll = (): Snapshot[] => {
+		let raw: string | null;
+		try {
+			raw = readFile(file);
+		} catch {
+			raw = null;
+		}
+		if (raw === null) return [];
+		const out: Snapshot[] = [];
+		for (const line of raw.split("\n")) {
+			const t = line.trim();
+			if (!t) continue;
+			try {
+				const parsed = JSON.parse(t) as Snapshot;
+				if (typeof parsed.t === "number" && typeof parsed.total === "number" && typeof parsed.currency === "string") {
+					out.push(parsed);
+				}
+			} catch {
+				// Corrupt line: skip, keep reading.
+			}
+		}
+		return out;
+	};
 	return {
 		append(snapshot) {
 			try {
-				appendFile(file, JSON.stringify(snapshot) + "\n");
+				const all = parseAll();
+				all.push(snapshot);
+				if (all.length > SNAPSHOT_KEEP * 2) {
+					const kept = all.slice(-SNAPSHOT_KEEP);
+					const tmp = `${file}.tmp`;
+					writeFile(tmp, kept.map((r) => JSON.stringify(r)).join("\n") + "\n");
+					rename(tmp, file);
+				} else {
+					appendFile(file, JSON.stringify(snapshot) + "\n");
+				}
 			} catch {
 				// Persistence is best-effort; the in-memory view still works.
 			}
 		},
 		load() {
-			let raw: string | null;
-			try {
-				raw = readFile(file);
-			} catch {
-				raw = null;
-			}
-			if (raw === null) return [];
-			const out: Snapshot[] = [];
-			for (const line of raw.split("\n")) {
-				const t = line.trim();
-				if (!t) continue;
-				try {
-					const parsed = JSON.parse(t) as Snapshot;
-					if (typeof parsed.t === "number" && typeof parsed.total === "number" && typeof parsed.currency === "string") {
-						out.push(parsed);
-					}
-				} catch {
-					// Corrupt line: skip, keep reading.
-				}
-			}
-			return out.slice(-SNAPSHOT_KEEP);
+			return parseAll().slice(-SNAPSHOT_KEEP);
 		},
 	};
 }
@@ -793,6 +814,20 @@ export default function deepseekBalance(pi: ExtensionAPI): void {
 		(p, s) => {
 			try {
 				nodeFs.appendFileSync(p, s);
+			} catch {
+				// best-effort
+			}
+		},
+		(p, s) => {
+			try {
+				nodeFs.writeFileSync(p, s);
+			} catch {
+				// best-effort
+			}
+		},
+		(from, to) => {
+			try {
+				nodeFs.renameSync(from, to);
 			} catch {
 				// best-effort
 			}

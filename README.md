@@ -44,7 +44,8 @@ mask a positive CNY row (a parser bug observed in other tools). Order:
 ### Burn rate and runway
 
 The extension appends `{time, currency, total}` snapshots to
-`~/.pi/agent/pi-deepseek-balance-snapshots.jsonl` on every successful fetch.
+`~/.pi/agent/pi-deepseek-balance-snapshots.jsonl` on every successful fetch
+(the file compacts to the newest 500 entries at 1000 lines).
 A rate is shown only past a confidence gate: ≥3 snapshots, spanning ≥1 hour,
 in one currency, after the most recent top-up. Below the gate nothing is
 displayed. The rate is account-wide — it includes spend from any client

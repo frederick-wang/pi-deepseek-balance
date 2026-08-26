@@ -35,10 +35,6 @@ jobs:
       # granular token. From 0.1.1 on, configure the trusted publisher on
       # npmjs.com and this fallback stays dormant (empty secret → OIDC path).
       - name: Publish (token for first release, OIDC after)
-        run: |
-          if [ -n "$NPM_TOKEN" ]; then
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$HOME/.npmrc"
-          fi
-          npm publish --access public
+        run: npm publish --access public
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

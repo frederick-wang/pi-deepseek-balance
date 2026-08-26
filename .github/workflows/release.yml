@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pnpm and Node.js
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          runtime: node@24
+          cache: true
+          install: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - name: Verify tarball file list (gate)
+        run: node scripts/check-pack.mjs
+      # npm's OIDC detection follows the setup-node pattern (registry-url
+      # present, no stray auth). Unscoped first publish: same shape.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # First publish (package does not exist yet): trusted publishing cannot
+      # be configured for a nonexistent package, so 0.1.0 goes out with a
+      # granular token. From 0.1.1 on, configure the trusted publisher on
+      # npmjs.com and this fallback stays dormant (empty secret → OIDC path).
+      - name: Publish (token for first release, OIDC after)
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$HOME/.npmrc"
+          fi
+          npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

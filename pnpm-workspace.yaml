@@ -1,0 +1,5 @@
+# pnpm settings. Build policy: nothing in this tree needs postinstall
+# scripts (types + compiler only); all are reviewed and denied.
+allowBuilds:
+  "@google/genai": false
+  protobufjs: false

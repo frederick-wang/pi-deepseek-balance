@@ -94,13 +94,17 @@ test("repeated close keys do not double-resolve", async () => {
 // Chrome: title exactly once, footer always last, status line when needed.
 // ---------------------------------------------------------------------------
 
-test("report title appears exactly once; footer is always the last line", async () => {
+test("report title appears exactly once; box is closed", async () => {
 	const pi = harness();
 	const log = await runOverlay(pi);
 	const out = invokeOverlay(log);
+	// Title appears exactly once — in the top border.
 	const titles = out.filter((l) => l.includes("DeepSeek Balance"));
 	assert.equal(titles.length, 1, `title lines: ${JSON.stringify(out)}`);
-	assert.match(out.at(-1)!, /close/, "footer last");
+	// Box: top border (╭…╮) first, bottom border (╰…╯) last, close hint inside.
+	assert.match(out[0]!, /^╭/);
+	assert.match(out.at(-1)!, /^╰/);
+	assert.ok(out.some((l) => /close/.test(l)), "close hint present inside the box");
 });
 
 test("short body (fits window): no status line, all lines present", async () => {
@@ -126,10 +130,10 @@ test("long body (exceeds window): every line reachable by scrolling; footer alwa
 	press(log, "\x1b[6~"); // PageDown
 	const after = comp.render(40);
 	assert.notDeepEqual(before, after, "status/body changed after PageDown");
-	// At the end: footer last, status at end.
+	// At the end: close hint visible, status at end.
 	press(log, "\x1b[F"); // End
 	const outEnd = comp.render(40);
-	assert.match(outEnd.at(-1)!, /close/);
+	assert.ok(outEnd.some((l) => /close/.test(l)), "close hint present");
 	assert.ok(outEnd.some((l) => /lines ·/.test(l)), "status line present when overflowing");
 });
 
@@ -137,15 +141,17 @@ test("scrolling: ↑↓ move one row; Home returns to top; End never exceeds max
 	const pi = harness();
 	const log = await runOverlay(pi, "--json");
 	const comp = log.overlay!.component!;
-	// Body window = render output minus chrome: skip header(1) + blank(1),
-	// then everything up to (but not including) the closing chrome suffix.
-	// Suffix layout: [body...][blank][status][blank][footer] (status present)
-	// or [body...][blank][footer] (status absent).
+	// Body window = content rows inside the box: lines wrapped in │...│ that
+	// are neither blank, nor the status line, nor the close hint.
 	const bodyWindow = () => {
 		const out = comp.render(80);
-		const hasStatus = /lines ·/.test(out[out.length - 3] ?? "");
-		const chromeTail = hasStatus ? 4 : 2; // [blank][status][blank][footer] | [blank][footer]
-		return out.slice(2, out.length - chromeTail);
+		return out.filter(
+			(l) =>
+				/^│.*│$/.test(l) &&
+				/\S/.test(l.slice(1, -1)) && // non-blank inner content
+				!/lines ·/.test(l) &&
+				!/close/.test(l),
+		);
 	};
 	const top = bodyWindow();
 	press(log, "\x1b[A"); // Up at top: stays
@@ -159,7 +165,7 @@ test("scrolling: ↑↓ move one row; Home returns to top; End never exceeds max
 	assert.deepEqual(bodyWindow(), top, "home returns to top");
 	for (let i = 0; i < 200; i++) press(log, "\x1b[B"); // hammer down
 	const bottom = bodyWindow();
-	assert.match(comp.render(80).at(-1)!, /close/, "footer last after hammering down");
+	assert.ok(comp.render(80).some((l) => /close/.test(l)), "close hint visible after hammering down");
 	press(log, "\x1b[F"); // End at bottom
 	assert.deepEqual(bodyWindow(), bottom, "end at bottom is stable (no overshoot)");
 	// Content-completeness invariant: walking down from the top visits every

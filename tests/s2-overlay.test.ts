@@ -178,6 +178,29 @@ test("createOverlayComponent: output never exceeds the row budget at any width",
 	}
 });
 
+test("createOverlayComponent: every rendered row is exactly width columns (boxed)", async () => {
+	const { createOverlayComponent, visualWidth } = await import("../extensions/deepseek-balance.ts");
+	const kb = { matches: () => false };
+	const body = ["各币种余额：", "  CNY  ¥331.72  (赠送 0.00 / 充值 331.72)", "", "快照数：67"];
+	const id = { fg: (_r: string, t: string) => t };
+	const c = createOverlayComponent({
+		header: "DeepSeek 余额",
+		body,
+		footer: "按 Enter、Esc 或 Ctrl+C 关闭",
+		theme: id,
+		kb,
+		done: () => {},
+		rowGen: () => 24,
+		lang: "zh",
+	});
+	for (const width of [80, 40, 20, 10]) {
+		const out = c.render(width);
+		for (const line of out) {
+			assert.equal(visualWidth(line), width, `width ${width}: ${JSON.stringify(line)}`);
+		}
+	}
+});
+
 test("createOverlayComponent: resize shrinks the budget live (footer preserved)", async () => {
 	const { createOverlayComponent } = await import("../extensions/deepseek-balance.ts");
 	const kb = { matches: () => false };
@@ -198,5 +221,6 @@ test("createOverlayComponent: resize shrinks the budget live (footer preserved)"
 	const out = c.render(80);
 	const budget = Math.max(1, Math.floor(rows * 0.8));
 	assert.ok(out.length <= budget, `after shrink: ${out.length} > ${budget}`);
-	assert.match(out.at(-1)!, /close/, "footer still last after shrink");
+	// The close hint is always present (inside the box, before the bottom border).
+	assert.ok(out.some((l) => /close/.test(l)), "close hint visible after shrink");
 });

@@ -250,8 +250,11 @@ export function wrapLines(lines: string[], width: number): string[] {
 		const cw = isWideChar(tok.cp) ? 2 : 1;
 			if (curW + cw > width && visibleCharCount(cur) > 0) {
 				wrapped.push(cur);
-				cur = tok.s;
-				curW = cw;
+				// A single glyph wider than the whole line can never fit: drop it
+				// rather than emit an overflowing row (a 2-col char in a 1-col
+				// line would break the box frame).
+				cur = cw <= width ? tok.s : "";
+				curW = cw <= width ? cw : 0;
 			} else {
 				cur += tok.s;
 				curW += cw;
@@ -286,6 +289,12 @@ function visibleCharCount(s: string): number {
 		}
 	}
 	return n;
+}
+
+/** Pad a line to `width` visible columns with trailing spaces (ANSI-aware). */
+function padToWidth(line: string, width: number): string {
+	const cur = visualWidth(line);
+	return cur >= width ? line : `${line}${" ".repeat(width - cur)}`;
 }
 
 /**
@@ -509,54 +518,99 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 	};
 
 	/**
-	 * Row budget read live (terminal resizes), matching the pi-side
-	 * maxHeight: "80%" — the returned array must never exceed it or pi's
-	 * head-keeping clip would drop the footer after a shrink.
+	 * Row budget read live (terminal resizes), matching pi's maxHeight
+	 * "80%" — the returned array must never exceed it or pi's head-keeping
+	 * clip would drop the bottom border after a shrink.
 	 */
 	function maxRowsAt(): number {
 		return Math.max(1, Math.floor(rowGen() * 0.8));
 	}
 
 	/**
-	 * Body avail for a given width: chrome rows are single-row (clamped, never
-	 * wrapped), so the budget is closed at any width. Shared by render and
-	 * handleInput or scroll positions drift. When maxRows cannot fit chrome
-	 * + status + body, the status line is dropped (content wins over chrome).
+	 * Body availability for a given maxRows. The box always keeps: top
+	 * border(1) + blank(1) + footer row(1) + blank before footer(1) +
+	 * bottom border(1) = 5 chrome rows; with a status line: + status row +
+	 * its blank = 7. Body gets the rest; when maxRows can't fit a status
+	 * line it's dropped (content wins over chrome). When maxRows < 6 the
+	 * box cannot physically render (5-row minimum): degrade to borderless
+	 * plain rows so the overlay still closes the budget.
 	 */
-	function bodyAvailAt(w: number, bodyLines: string[]): { avail: number; needsStatus: boolean } {
+	function layout(width: number): { avail: number; canStatus: boolean; boxed: boolean } {
 		const maxRows = maxRowsAt();
-		const fixedChrome = 4; // header(1) + blank(1) + blank(1) + footer(1)
-		// Body may get zero rows on absurdly short terminals: chrome never
-		// yields (footer must stay last), so body gets what's left.
-		const availNoStatus = Math.max(0, maxRows - fixedChrome);
-		const needsStatus = bodyLines.length > availNoStatus && maxRows >= fixedChrome + 2 + 1 && availNoStatus > 0;
-		const avail = needsStatus
-			? Math.max(0, maxRows - fixedChrome - 2) // blank before status + status row
-			: availNoStatus;
-		return { avail, needsStatus };
+		// Box needs 2 columns for the side bars + a title that fits; below that
+		// (or tiny terminals) degrade to borderless plain rows.
+		const boxed = maxRows >= 6 && width >= 8;
+		// Boxed: borders(2) + title blank(1) + footer blank(1) + footer row(1) = 5.
+		// Borderless (tiny): header(1) + blank(1) + blank(1) + footer(1) = 4.
+		const chrome = boxed ? 5 : 4;
+		const avail = Math.max(0, maxRows - chrome);
+		const canStatus = boxed && maxRows >= chrome + 2 + 1;
+		return { avail, canStatus, boxed };
 	}
 
 	/**
-	 * Render with an exact height budget: chrome rows are clamped to one row
-	 * each, body lines wrap. The returned array can never exceed maxRows, so
-	 * pi's maxHeight clip (which keeps the head) never has anything to drop —
-	 * the footer is always last.
+	 * Scroll window for the current body at the given inner width: how many
+	 * body rows fit (status line costing two rows) and whether status shows.
+	 * Shared by render and handleInput so the math never drifts.
 	 */
+	function scrollWindowAt(w: number): { bodyLines: string[]; avail: number; needsStatus: boolean } {
+		const innerW = Math.max(1, w - 2);
+		const bodyLines = wrapLines(body0, innerW);
+		const { avail, canStatus } = layout(w);
+		const needsStatus = canStatus && bodyLines.length > avail;
+		const bodyAvail = needsStatus ? Math.max(0, avail - 2) : avail;
+		return { bodyLines, avail: bodyAvail, needsStatus };
+	}
+
 	function renderLines(width: number): string[] {
 		const w = Math.max(1, width);
-		const headerLine = clampChrome(`  ${theme.fg("accent", header)}`, w);
-		const bodyLines = wrapLines(body0, w);
-		const footerLine = clampChrome(`  ${theme.fg("dim", footer)}`, w);
-		const { avail, needsStatus } = bodyAvailAt(w, bodyLines);
-		const win = windowSlice(bodyLines, scrollTop, avail);
+		const innerW = Math.max(1, w - 2);
+		const { bodyLines, avail: bodyAvail, needsStatus } = scrollWindowAt(w);
+		const { boxed } = layout(w);
+		const win = windowSlice(bodyLines, scrollTop, bodyAvail);
 		scrollTop = win.top; // write back the clamp so input math agrees
-		const out: string[] = [headerLine];
-		if (win.lines.length > 0) out.push("", ...win.lines);
-		if (needsStatus) {
-			const shown = win.atEnd ? bodyLines.length : win.top + win.lines.length;
-			out.push("", clampChrome(`  ${theme.fg("muted", msg(lang, "scrollStatus", { pos: shown, total: bodyLines.length }))}`, w));
+
+		const statusRow = needsStatus
+			? clampChrome(`  ${theme.fg("muted", msg(lang, "scrollStatus", { pos: win.atEnd ? bodyLines.length : win.top + win.lines.length, total: bodyLines.length }))}`, innerW)
+			: null;
+		const footerText = innerW < 20 ? msg(lang, "pressCloseShort") : footer;
+		const footerRow = clampChrome(`  ${theme.fg("dim", footerText)}`, innerW);
+		const titleRow = clampChrome(`  ${theme.fg("accent", header)}`, innerW);
+
+		const blocks: string[] = [""]; // blank under the top border
+		blocks.push(...win.lines);
+		if (statusRow) {
+			blocks.push("");
+			blocks.push(statusRow);
 		}
-		out.push("", footerLine);
+		blocks.push("");
+		blocks.push(footerRow);
+
+		if (!boxed) {
+			// Degraded mode (maxRows < 6): borderless plain rows so the overlay
+			// still closes the height budget on absurdly short terminals.
+			const out: string[] = [titleRow];
+			if (win.lines.length > 0) out.push("", ...win.lines);
+			if (statusRow) out.push("", statusRow);
+			out.push("", footerRow);
+			return out;
+		}
+
+		// Top border: ╭─[centered title]─╮ (single corner char each side)
+		const titleStr = clampChrome(` ${theme.fg("accent", header)} `, innerW);
+		const titleW = visualWidth(titleStr);
+		const pad = Math.max(0, innerW - titleW);
+		const topPad = Math.floor(pad / 2);
+		const topPad2 = pad - topPad;
+		const top = theme.fg("border", "╭") + theme.fg("border", "─".repeat(topPad)) + titleStr + theme.fg("border", "─".repeat(topPad2)) + theme.fg("border", "╮");
+		const bottom = theme.fg("border", `╰${"─".repeat(Math.max(0, innerW))}╯`);
+
+		const out: string[] = [top];
+		for (const line of blocks) {
+			const inner = line === "" ? " ".repeat(innerW) : padToWidth(line, innerW);
+			out.push(`${theme.fg("border", "│")}${inner}${theme.fg("border", "│")}`);
+		}
+		out.push(bottom);
 		return out;
 	}
 
@@ -576,17 +630,16 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 				return;
 			}
 			const w = Math.max(1, lastWidth);
-			const bodyLines = wrapLines(body0, w);
-			const { avail } = bodyAvailAt(w, bodyLines);
-			const max = Math.max(0, bodyLines.length - avail);
+			const { bodyLines, avail: bodyAvail } = scrollWindowAt(w);
+			const max = Math.max(0, bodyLines.length - bodyAvail);
 			if (kb.matches(data, "tui.select.up")) {
-				scrollTop = clampScrollTop(scrollTop - 1, bodyLines.length, avail);
+				scrollTop = clampScrollTop(scrollTop - 1, bodyLines.length, bodyAvail);
 			} else if (kb.matches(data, "tui.select.down")) {
-				scrollTop = clampScrollTop(scrollTop + 1, bodyLines.length, avail);
+				scrollTop = clampScrollTop(scrollTop + 1, bodyLines.length, bodyAvail);
 			} else if (kb.matches(data, "tui.select.pageUp") || kb.matches(data, "tui.altScreen.pageUp")) {
-				scrollTop = clampScrollTop(scrollTop - Math.max(1, avail - 1), bodyLines.length, avail);
+				scrollTop = clampScrollTop(scrollTop - Math.max(1, bodyAvail - 1), bodyLines.length, bodyAvail);
 			} else if (kb.matches(data, "tui.select.pageDown") || kb.matches(data, "tui.altScreen.pageDown")) {
-				scrollTop = clampScrollTop(scrollTop + Math.max(1, avail - 1), bodyLines.length, avail);
+				scrollTop = clampScrollTop(scrollTop + Math.max(1, bodyAvail - 1), bodyLines.length, bodyAvail);
 			} else if (kb.matches(data, "tui.altScreen.top")) {
 				scrollTop = 0;
 			} else if (kb.matches(data, "tui.altScreen.bottom")) {
@@ -661,13 +714,14 @@ const MESSAGES: Record<Lang, Record<string, (v: MsgVars) => string>> = {
 	en: {
 		reportTitle: () => "DeepSeek Balance",
 		pressClose: () => "Press Enter, Esc, or Ctrl+C to close",
+		pressCloseShort: () => "Esc to close",
 		scrollStatus: (v) => `${v.pos}/${v.total} lines · ↑↓ scroll · Enter closes`,
 		allCurrencies: () => "Currencies:",
 		granted: () => "granted",
 		toppedUp: () => "topped up",
 		unavailable: () => "Account unavailable (is_available: false).",
 		burnRate: (v) => `Burn rate: ${v.rate} ${v.currency}/h (account-wide, last ${v.window})`,
-		runway: (v) => `Runway: ~${v.hours} h at the current rate (estimate)`,
+		runway: (v) => `Runway: ~${formatRunway(Number(v.hours))} at the current rate (estimate)`,
 		noRate: () => "Burn rate: needs ≥3 snapshots spanning ≥1 h; collecting.",
 		alertWarn: (v) => `DeepSeek balance low: ${v.amount}`,
 		alertError: (v) => `DeepSeek balance critical: ${v.amount}`,
@@ -680,13 +734,18 @@ const MESSAGES: Record<Lang, Record<string, (v: MsgVars) => string>> = {
 	zh: {
 		reportTitle: () => "DeepSeek 余额",
 		pressClose: () => "按 Enter、Esc 或 Ctrl+C 关闭",
+		pressCloseShort: () => "Esc 关闭",
 		scrollStatus: (v) => `第 ${v.pos}/${v.total} 行 · ↑↓ 滚动 · Enter 关闭`,
 		allCurrencies: () => "各币种余额：",
 		granted: () => "赠送",
 		toppedUp: () => "充值",
 		unavailable: () => "账户不可用（is_available: false）。",
 		burnRate: (v) => `消耗速率：${v.rate} ${v.currency}/小时（账户级，近 ${v.window}）`,
-		runway: (v) => `按当前速率约可用 ${v.hours} 小时（估算）`,
+		runway: (v) => {
+			const h = Number(v.hours);
+			const unit = h >= 24 ? `${(h / 24).toFixed(1)} 天` : h >= 1 ? `${h.toFixed(1)} 小时` : `${Math.round(h * 60)} 分钟`;
+			return `按当前速率约可用 ${unit}（估算）`;
+		},
 		noRate: () => "消耗速率：需至少 3 个快照且跨度 ≥1 小时，采集中。",
 		alertWarn: (v) => `DeepSeek 余额偏低：${v.amount}`,
 		alertError: (v) => `DeepSeek 余额告急：${v.amount}`,
@@ -863,7 +922,7 @@ export function buildReportText(
 	if (rate) {
 		const hours = runwayHours(row.total, rate.perHour);
 		if (hours !== null && rate.currency === row.currency) {
-			lines.push(msg(lang, "runway", { hours: formatRunway(hours) }));
+			lines.push(msg(lang, "runway", { hours }));
 		}
 	}
 	lines.push("", msg(lang, "snapshots", { count: snapshots.length }));

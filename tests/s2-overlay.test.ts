@@ -198,5 +198,6 @@ test("createOverlayComponent: resize shrinks the budget live (footer preserved)"
 	const out = c.render(80);
 	const budget = Math.max(1, Math.floor(rows * 0.8));
 	assert.ok(out.length <= budget, `after shrink: ${out.length} > ${budget}`);
-	assert.match(out.at(-1)!, /close/, "footer still last after shrink");
+	// The close hint is always present (inside the box, before the bottom border).
+	assert.ok(out.some((l) => /close/.test(l)), "close hint visible after shrink");
 });

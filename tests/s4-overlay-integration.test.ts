@@ -133,6 +133,26 @@ test("long body (exceeds window): every line reachable by scrolling; footer alwa
 	assert.ok(outEnd.some((l) => /lines ·/.test(l)), "status line present when overflowing");
 });
 
+test("scrolling: ↑↓ move one row; Home returns to top; End never exceeds max", async () => {
+	const pi = harness();
+	const log = await runOverlay(pi, "--json");
+	const comp = log.overlay!.component!;
+	const renderText = () => comp.render(80).join("\n");
+	const top = renderText();
+	press(log, "\x1b[A"); // Up at top: stays
+	assert.equal(renderText(), top, "up at top is a no-op");
+	press(log, "\x1b[B"); // Down one row
+	const oneDown = renderText();
+	assert.notEqual(oneDown, top, "down moves the window");
+	press(log, "\x1b[H"); // Home
+	assert.equal(renderText(), top, "home returns to top");
+	for (let i = 0; i < 200; i++) press(log, "\x1b[B"); // hammer down
+	const bottom = renderText();
+	assert.match(bottom.split("\n").at(-1)!, /close/, "footer last after hammering down");
+	press(log, "\x1b[F"); // End at bottom
+	assert.equal(renderText(), bottom, "end at bottom is stable (no overshoot)");
+});
+
 // ---------------------------------------------------------------------------
 // invalidate — theme refresh is real (render recomputes with the theme).
 // ---------------------------------------------------------------------------

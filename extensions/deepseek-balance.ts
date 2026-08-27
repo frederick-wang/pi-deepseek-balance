@@ -261,8 +261,10 @@ export function wrapLines(lines: string[], width: number): string[] {
 		// Re-apply the line's leading style to every segment after the first:
 		// the first already carries it (token flow), and pi resets styles per
 		// rendered line, so without this only the first row keeps the color.
+		// Strip ALL whitespace from the style prefix — a continuation segment
+		// must not inherit the original indentation.
 		const { ansiPrefix } = splitAnsi(line);
-		const styleOnly = ansiPrefix.replace(/^\s+/, "");
+		const styleOnly = ansiPrefix.replace(/\s/g, "");
 		for (let k = 0; k < wrapped.length; k++) {
 			out.push(k === 0 ? wrapped[k] : `${styleOnly}${wrapped[k]}`);
 		}
@@ -512,7 +514,7 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 	 * head-keeping clip would drop the footer after a shrink.
 	 */
 	function maxRowsAt(): number {
-		return Math.max(10, Math.floor(rowGen() * 0.8));
+		return Math.max(1, Math.floor(rowGen() * 0.8));
 	}
 
 	/**
@@ -524,10 +526,12 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 	function bodyAvailAt(w: number, bodyLines: string[]): { avail: number; needsStatus: boolean } {
 		const maxRows = maxRowsAt();
 		const fixedChrome = 4; // header(1) + blank(1) + blank(1) + footer(1)
-		const availNoStatus = Math.max(1, maxRows - fixedChrome);
-		const needsStatus = bodyLines.length > availNoStatus && maxRows >= fixedChrome + 2 + 1;
+		// Body may get zero rows on absurdly short terminals: chrome never
+		// yields (footer must stay last), so body gets what's left.
+		const availNoStatus = Math.max(0, maxRows - fixedChrome);
+		const needsStatus = bodyLines.length > availNoStatus && maxRows >= fixedChrome + 2 + 1 && availNoStatus > 0;
 		const avail = needsStatus
-			? Math.max(1, maxRows - fixedChrome - 2) // blank before status + status row
+			? Math.max(0, maxRows - fixedChrome - 2) // blank before status + status row
 			: availNoStatus;
 		return { avail, needsStatus };
 	}
@@ -545,6 +549,7 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 		const footerLine = clampChrome(`  ${theme.fg("dim", footer)}`, w);
 		const { avail, needsStatus } = bodyAvailAt(w, bodyLines);
 		const win = windowSlice(bodyLines, scrollTop, avail);
+		scrollTop = win.top; // write back the clamp so input math agrees
 		const out: string[] = [headerLine];
 		if (win.lines.length > 0) out.push("", ...win.lines);
 		if (needsStatus) {
@@ -1021,7 +1026,7 @@ export function createExtension(deps: ExtensionDeps) {
 
 		async function showOverlay(text: string, ctx: CtxLike): Promise<void> {
 			await ctx.ui.custom?.((tui: unknown, theme: FooterTheme, kb: KeyLike, done: (value: unknown) => void) => {
-				const rowGen = () => (tui as { terminal?: { rows?: number } }).terminal?.rows ?? 0;
+				const rowGen = () => (tui as { terminal?: { rows?: number } }).terminal?.rows ?? 24;
 				return createOverlayComponent({
 					header: msg(lang, "reportTitle"),
 					body: text.split("\n"),

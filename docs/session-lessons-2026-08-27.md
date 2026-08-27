@@ -218,3 +218,63 @@ content — there is no automatic background dim/mask. If your overlay is
 borderless plain text, it visually merges with whatever is behind it. This
 is why every pi overlay example draws a box. If you want a "modal" feel,
 draw the frame yourself (theme `border` color); pi will not give you one.
+
+## 16. Repo-to-repo audit: sibling projects carry the same latent bugs
+
+After fixing pi-deepseek-balance, I reviewed `~/Projects/pi-glm-usage`
+(the sibling extension built on the same architecture). It had ALL of the
+same defects: joined-string render, raw key bytes, no maxHeight, dormant
+mock, title duplication — plus a footer format of its own. The pattern was
+copied between repos, so the bugs were copied too.
+
+**Lesson**: when a bug is architectural (integration-boundary contract),
+sweep every repo that shares the architecture. Port the fix, don't
+re-derive it — but adapt: pi-glm-usage's report is quota-percentage based,
+so its copy needed the same helper functions but not the same message
+formatting.
+
+## 17. Porting reintroduces fixed bugs unless you diff the helper bodies
+
+I extracted the pure-helper block from the fixed repo and inserted it into
+the sibling. The wrapLines first-char overflow fix (drop a 2-col glyph that
+can't fit a fresh segment) had been made AFTER my extraction snapshot in
+one repo — so the sibling initially shipped WITHOUT it, and I only caught
+it because the port's tests (written from the fixed repo's test matrix)
+failed. Then I had to sync the fix back to the FIXED repo too (it had the
+same hole — my earlier "fix" only handled the mid-segment case, not the
+first-char case).
+
+**Lesson**: after porting, run the source repo's test suite against the
+target; then re-check the source for any fix made after extraction. A
+repo-to-repo audit is not one-directional: sync fixes in both directions.
+
+## 18. "Short terminal" budgets: lose chrome, not content
+
+When the height budget can't fit both chrome and body, my first instinct
+was to keep the chrome (box borders + footer) and let the body shrink to
+zero — content silently vanished. Reviewers flagged it: at 5-6 rows the
+body is the point; chrome is decoration. Fix: borderless degrade mode drops
+the trailing blank (chrome 4 → 3) so even tiny budgets show title + body +
+footer. The tradeoff order should be: content > chrome, body rows > status
+line, status line > decorative blanks.
+
+## 19. Cross-repo sync of a one-line fix is still a full review cycle
+
+The close-hint cutoff change (`innerW < 20` → `visualWidth(footer) + 2 >
+innerW`) was one line, but I applied it to two repos, and each repo then
+needed its own test run, commit, and push. Shared code earns a shared
+changelog: when you fix a bug in one repo of a family, grep the other
+repos for the same line and fix them in the same session, then note it in
+both commit messages. The sibling is not a downstream consumer; it's a
+parallel codebase.
+
+## 20. Don't trust a review that ran against a different snapshot
+
+Codex reviewed the pi-glm-usage branch while I was still editing the same
+files (I moved `stubKb` between helpers and test files while it was
+reading). Its findings named problems I had already fixed (double
+registration, missing rows-6 coverage) and it reported the worktree as
+dirty from a "delegated worker" — which was actually MY in-flight edits.
+**Lesson**: freeze the diff before launching reviews; if you must keep
+working, tell the reviewer the snapshot baseline or re-review. Verify
+claims against the CURRENT tree, not the review timestamp.

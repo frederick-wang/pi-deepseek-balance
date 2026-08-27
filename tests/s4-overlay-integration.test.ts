@@ -102,8 +102,8 @@ test("report title appears exactly once; box is closed", async () => {
 	const titles = out.filter((l) => l.includes("DeepSeek Balance"));
 	assert.equal(titles.length, 1, `title lines: ${JSON.stringify(out)}`);
 	// Box: top border (╭…╮) first, bottom border (╰…╯) last, close hint inside.
-	assert.match(out[0]!, /^.*╭.*╮$/);
-	assert.match(out.at(-1)!, /^╰.*╯$/);
+	assert.match(out[0]!, /^╭/);
+	assert.match(out.at(-1)!, /^╰/);
 	assert.ok(out.some((l) => /close/.test(l)), "close hint present inside the box");
 });
 

@@ -178,6 +178,29 @@ test("createOverlayComponent: output never exceeds the row budget at any width",
 	}
 });
 
+test("createOverlayComponent: every rendered row is exactly width columns (boxed)", async () => {
+	const { createOverlayComponent, visualWidth } = await import("../extensions/deepseek-balance.ts");
+	const kb = { matches: () => false };
+	const body = ["各币种余额：", "  CNY  ¥331.72  (赠送 0.00 / 充值 331.72)", "", "快照数：67"];
+	const id = { fg: (_r: string, t: string) => t };
+	const c = createOverlayComponent({
+		header: "DeepSeek 余额",
+		body,
+		footer: "按 Enter、Esc 或 Ctrl+C 关闭",
+		theme: id,
+		kb,
+		done: () => {},
+		rowGen: () => 24,
+		lang: "zh",
+	});
+	for (const width of [80, 40, 20, 10]) {
+		const out = c.render(width);
+		for (const line of out) {
+			assert.equal(visualWidth(line), width, `width ${width}: ${JSON.stringify(line)}`);
+		}
+	}
+});
+
 test("createOverlayComponent: resize shrinks the budget live (footer preserved)", async () => {
 	const { createOverlayComponent } = await import("../extensions/deepseek-balance.ts");
 	const kb = { matches: () => false };

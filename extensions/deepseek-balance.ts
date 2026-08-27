@@ -250,8 +250,11 @@ export function wrapLines(lines: string[], width: number): string[] {
 		const cw = isWideChar(tok.cp) ? 2 : 1;
 			if (curW + cw > width && visibleCharCount(cur) > 0) {
 				wrapped.push(cur);
-				cur = tok.s;
-				curW = cw;
+				// A single glyph wider than the whole line can never fit: drop it
+				// rather than emit an overflowing row (a 2-col char in a 1-col
+				// line would break the box frame).
+				cur = cw <= width ? tok.s : "";
+				curW = cw <= width ? cw : 0;
 			} else {
 				cur += tok.s;
 				curW += cw;
@@ -532,11 +535,13 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 	 * box cannot physically render (5-row minimum): degrade to borderless
 	 * plain rows so the overlay still closes the budget.
 	 */
-	function layout(): { avail: number; canStatus: boolean; boxed: boolean } {
+	function layout(width: number): { avail: number; canStatus: boolean; boxed: boolean } {
 		const maxRows = maxRowsAt();
-		const boxed = maxRows >= 6;
+		// Box needs 2 columns for the side bars + a title that fits; below that
+		// (or tiny terminals) degrade to borderless plain rows.
+		const boxed = maxRows >= 6 && width >= 8;
 		// Boxed: borders(2) + title blank(1) + footer blank(1) + footer row(1) = 5.
-		// Borderless (tiny terminals): header(1) + blank(1) + blank(1) + footer(1) = 4.
+		// Borderless (tiny): header(1) + blank(1) + blank(1) + footer(1) = 4.
 		const chrome = boxed ? 5 : 4;
 		const avail = Math.max(0, maxRows - chrome);
 		const canStatus = boxed && maxRows >= chrome + 2 + 1;
@@ -544,26 +549,32 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 	}
 
 	/**
-	 * Render with a closed border box: title embedded in the top border,
-	 * content rows wrapped in │...│, status line when the body overflows,
-	 * close hint as the last content row before the bottom border. Body is
-	 * never truncated: it scrolls within the box. The returned array never
-	 * exceeds maxRows.
+	 * Scroll window for the current body at the given inner width: how many
+	 * body rows fit (status line costing two rows) and whether status shows.
+	 * Shared by render and handleInput so the math never drifts.
 	 */
+	function scrollWindowAt(w: number): { bodyLines: string[]; avail: number; needsStatus: boolean } {
+		const innerW = Math.max(1, w - 2);
+		const bodyLines = wrapLines(body0, innerW);
+		const { avail, canStatus } = layout(w);
+		const needsStatus = canStatus && bodyLines.length > avail;
+		const bodyAvail = needsStatus ? Math.max(0, avail - 2) : avail;
+		return { bodyLines, avail: bodyAvail, needsStatus };
+	}
+
 	function renderLines(width: number): string[] {
 		const w = Math.max(1, width);
 		const innerW = Math.max(1, w - 2);
-		const bodyLines = wrapLines(body0, innerW);
-		const { avail, canStatus, boxed } = layout();
-		const needsStatus = canStatus && bodyLines.length > avail;
-		const bodyAvail = needsStatus ? Math.max(0, avail - 2) : avail;
+		const { bodyLines, avail: bodyAvail, needsStatus } = scrollWindowAt(w);
+		const { boxed } = layout(w);
 		const win = windowSlice(bodyLines, scrollTop, bodyAvail);
 		scrollTop = win.top; // write back the clamp so input math agrees
 
 		const statusRow = needsStatus
 			? clampChrome(`  ${theme.fg("muted", msg(lang, "scrollStatus", { pos: win.atEnd ? bodyLines.length : win.top + win.lines.length, total: bodyLines.length }))}`, innerW)
 			: null;
-		const footerRow = clampChrome(`  ${theme.fg("dim", footer)}`, innerW);
+		const footerText = innerW < 20 ? msg(lang, "pressCloseShort") : footer;
+		const footerRow = clampChrome(`  ${theme.fg("dim", footerText)}`, innerW);
 		const titleRow = clampChrome(`  ${theme.fg("accent", header)}`, innerW);
 
 		const blocks: string[] = [""]; // blank under the top border
@@ -585,12 +596,13 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 			return out;
 		}
 
-		// Top border: ╭─ [centered title] ─╮
+		// Top border: ╭─[centered title]─╮ (single corner char each side)
 		const titleStr = clampChrome(` ${theme.fg("accent", header)} `, innerW);
 		const titleW = visualWidth(titleStr);
-		const topPad = Math.max(0, Math.floor((innerW - titleW) / 2));
-		const topPad2 = Math.max(0, innerW - titleW - topPad);
-		const top = theme.fg("border", `╭─${"─".repeat(topPad)}`) + titleStr + theme.fg("border", `${"─".repeat(topPad2)}─╮`);
+		const pad = Math.max(0, innerW - titleW);
+		const topPad = Math.floor(pad / 2);
+		const topPad2 = pad - topPad;
+		const top = theme.fg("border", "╭") + theme.fg("border", "─".repeat(topPad)) + titleStr + theme.fg("border", "─".repeat(topPad2)) + theme.fg("border", "╮");
 		const bottom = theme.fg("border", `╰${"─".repeat(Math.max(0, innerW))}╯`);
 
 		const out: string[] = [top];
@@ -618,11 +630,7 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 				return;
 			}
 			const w = Math.max(1, lastWidth);
-			const innerW = Math.max(1, w - 2);
-			const bodyLines = wrapLines(body0, innerW);
-			const { avail, canStatus, boxed } = layout();
-			const needsStatus = canStatus && bodyLines.length > avail;
-			const bodyAvail = needsStatus ? Math.max(0, avail - 2) : avail;
+			const { bodyLines, avail: bodyAvail } = scrollWindowAt(w);
 			const max = Math.max(0, bodyLines.length - bodyAvail);
 			if (kb.matches(data, "tui.select.up")) {
 				scrollTop = clampScrollTop(scrollTop - 1, bodyLines.length, bodyAvail);
@@ -706,6 +714,7 @@ const MESSAGES: Record<Lang, Record<string, (v: MsgVars) => string>> = {
 	en: {
 		reportTitle: () => "DeepSeek Balance",
 		pressClose: () => "Press Enter, Esc, or Ctrl+C to close",
+		pressCloseShort: () => "Esc to close",
 		scrollStatus: (v) => `${v.pos}/${v.total} lines · ↑↓ scroll · Enter closes`,
 		allCurrencies: () => "Currencies:",
 		granted: () => "granted",
@@ -725,6 +734,7 @@ const MESSAGES: Record<Lang, Record<string, (v: MsgVars) => string>> = {
 	zh: {
 		reportTitle: () => "DeepSeek 余额",
 		pressClose: () => "按 Enter、Esc 或 Ctrl+C 关闭",
+		pressCloseShort: () => "Esc 关闭",
 		scrollStatus: (v) => `第 ${v.pos}/${v.total} 行 · ↑↓ 滚动 · Enter 关闭`,
 		allCurrencies: () => "各币种余额：",
 		granted: () => "赠送",

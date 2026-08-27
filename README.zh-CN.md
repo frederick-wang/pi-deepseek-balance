@@ -57,7 +57,10 @@ DeepSeek 余额偏低：¥15.42
 ### `/deepseek-balance`
 
 覆盖层显示全部货币行、赠送/充值拆分（赠送余额先扣）、消耗速率及其窗口、
-快照数。`/deepseek-balance --json` 输出原始数据（仅 TUI 与 print 模式）。
+快照数。报告超出窗口高度时可滚动：标题固定，正文用 ↑/↓、PgUp/PgDn、
+Home/End 滚动，状态行显示位置——即使 `--json` 长载荷也不会被截断。
+按 Enter、Esc 或 Ctrl+C 关闭。`/deepseek-balance --json` 输出原始数据
+（仅 TUI 与 print 模式）。
 
 ### 刷新行为
 

@@ -66,8 +66,12 @@ with `PI_DEEPSEEK_BALANCE_THRESHOLDS="20,5"` (CNY; `0,0` disables).
 ### `/deepseek-balance`
 
 Overlay with every currency row, the granted/topped-up split (granted balance
-burns first), the burn rate and its window, and the snapshot count.
-`/deepseek-balance --json` prints the raw payload (TUI and print mode only).
+burns first), the burn rate and its window, and the snapshot count. The
+overlay scrolls when the report is taller than the window: the title stays
+fixed, the body scrolls (↑/↓, PgUp/PgDn, Home/End), and a status line shows
+the position — even `--json` payloads are never truncated. Close with Enter,
+Esc, or Ctrl+C. `/deepseek-balance --json` prints the raw payload (TUI and
+print mode only).
 
 ### Refresh behavior
 

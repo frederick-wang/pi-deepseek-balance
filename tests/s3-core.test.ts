@@ -143,11 +143,20 @@ test("footer shows a readable runway suffix once a same-currency rate exists", a
 	const id = { fg: (_r: string, t: string) => t };
 	const bal = { available: true, rows: [{ currency: "CNY", total: 90, granted: 0, toppedUp: 90 }] };
 	const withRate = renderFooter(bal, bal.rows[0], { now: 0, theme: id, rate: { currency: "CNY", perHour: 10 } });
-	assert.match(withRate, /90\.00 ≈9\.0h/, `got: ${withRate}`);
+	assert.match(withRate, /90\.00 ≈ 9\.0h/, `got: ${withRate}`);
 	const noRate = renderFooter(bal, bal.rows[0], { now: 0, theme: id });
 	assert.doesNotMatch(noRate, /≈/);
 	const wrongCurrency = renderFooter(bal, bal.rows[0], { now: 0, theme: id, rate: { currency: "USD", perHour: 1 } });
 	assert.doesNotMatch(wrongCurrency, /≈/);
+});
+
+test("footer: currency symbol has breathing room before the bar", async () => {
+	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
+	const id = { fg: (_r: string, t: string) => t };
+	const bal = { available: true, rows: [{ currency: "CNY", total: 90, granted: 0, toppedUp: 90 }] };
+	const out = renderFooter(bal, bal.rows[0], { now: 0, theme: id });
+	assert.match(out, /^DS ¥ █/, `got: ${out}`);
+	assert.doesNotMatch(out, /¥█/, "bar must not touch the symbol");
 });
 
 test("snapshot store compacts at 1000 lines to the newest 500", async () => {

@@ -18,7 +18,7 @@ prices. This extension shows a different number: the actual CNY account
 balance and how fast it is draining. The two answer different questions.
 
 ```
-DS ¥████░░░░ 377.89
+DS ¥ ████░░░░ 377.89
 ```
 
 ## Usage
@@ -32,7 +32,7 @@ to any other provider.
 | --- | --- |
 | `¥377.89` | selected currency row's total balance |
 | `████░░░░` | 8-cell bar: runway-normalized once a burn rate exists (a full bar ≈ 12 h of runway); before that, balance against the warning band |
-| `≈9.0h` | estimated runway at the current burn rate, appended once a rate exists |
+| `≈ 9.0h` | estimated runway at the current burn rate, appended once a rate exists |
 | `~` | the displayed value is stale: the last refresh failed, the previous number is kept |
 | color | by runway when a rate exists (red < 2 h, yellow < 12 h); otherwise by absolute thresholds (defaults ¥20 / ¥5) |
 
@@ -51,7 +51,7 @@ in one currency, after the most recent top-up. Below the gate nothing is
 displayed. The rate is account-wide — it includes spend from any client
 sharing the key, not just this pi session. Top-ups reset the window instead
 of producing negative rates. Once a rate exists, the footer appends an
-estimated runway (`≈9.0h` at the current rate) and the bar scales to it.
+estimated runway (`≈ 9.0h` at the current rate) and the bar scales to it.
 
 ### Threshold alerts
 

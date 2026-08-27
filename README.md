@@ -18,7 +18,7 @@ prices. This extension shows a different number: the actual CNY account
 balance and how fast it is draining. The two answer different questions.
 
 ```
-DS ¥████░░░░ 377.89
+DS ¥ ████░░░░ 377.89
 ```
 
 ## Usage

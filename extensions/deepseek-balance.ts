@@ -452,7 +452,7 @@ export function renderFooter(balance: Balance, row: CurrencyRow, opts: FooterOpt
 		const hours = runwayHours(row.total, opts.rate.perHour);
 		if (hours !== null) runway = ` ${theme.fg("dim", `≈${formatRunway(hours)}`)}`;
 	}
-	return `DS ${sym}${renderBar(fraction, theme, role)} ${theme.fg(role, pct)}${runway}`;
+	return `DS ${sym} ${renderBar(fraction, theme, role)} ${theme.fg(role, pct)}${runway}`;
 }
 
 // ---------------------------------------------------------------------------

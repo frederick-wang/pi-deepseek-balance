@@ -255,6 +255,10 @@ export function wrapLines(lines: string[], width: number): string[] {
 				// line would break the box frame).
 				cur = cw <= width ? tok.s : "";
 				curW = cw <= width ? cw : 0;
+			} else if (cw > width) {
+				// First char of a fresh segment can't fit either: drop silently.
+				cur = "";
+				curW = 0;
 			} else {
 				cur += tok.s;
 				curW += cw;

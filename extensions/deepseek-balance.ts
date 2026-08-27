@@ -577,7 +577,9 @@ export function createOverlayComponent(opts: OverlayComponentOpts): OverlayCompo
 		const statusRow = needsStatus
 			? clampChrome(`  ${theme.fg("muted", msg(lang, "scrollStatus", { pos: win.atEnd ? bodyLines.length : win.top + win.lines.length, total: bodyLines.length }))}`, innerW)
 			: null;
-		const footerText = innerW < 20 ? msg(lang, "pressCloseShort") : footer;
+		// Pick the short close-hint variant when the full one can't fit the
+		// inner width (2-col indent included) — truncating mid-word is worse.
+		const footerText = visualWidth(footer) + 2 > innerW ? msg(lang, "pressCloseShort") : footer;
 		const footerRow = clampChrome(`  ${theme.fg("dim", footerText)}`, innerW);
 		const titleRow = clampChrome(`  ${theme.fg("accent", header)}`, innerW);
 

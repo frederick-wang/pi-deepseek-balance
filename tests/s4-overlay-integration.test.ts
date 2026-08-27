@@ -115,7 +115,7 @@ test("long body (exceeds window): every line reachable by scrolling; footer alwa
 	const pi = harness();
 	const log = await runOverlay(pi, "--json");
 	const comp = log.overlay!.component!;
-	const budget = Math.max(10, Math.floor(log.overlay!.rows * 0.8));
+	const budget = Math.max(1, Math.floor(log.overlay!.rows * 0.8));
 	// Render at several widths — output must never exceed the pi-side budget.
 	for (const width of [80, 40, 20, 10]) {
 		const out = comp.render(width);
@@ -131,6 +131,60 @@ test("long body (exceeds window): every line reachable by scrolling; footer alwa
 	const outEnd = comp.render(40);
 	assert.match(outEnd.at(-1)!, /close/);
 	assert.ok(outEnd.some((l) => /lines ·/.test(l)), "status line present when overflowing");
+});
+
+test("scrolling: ↑↓ move one row; Home returns to top; End never exceeds max", async () => {
+	const pi = harness();
+	const log = await runOverlay(pi, "--json");
+	const comp = log.overlay!.component!;
+	// Body window = render output minus chrome: skip header(1) + blank(1),
+	// then everything up to (but not including) the closing chrome suffix.
+	// Suffix layout: [body...][blank][status][blank][footer] (status present)
+	// or [body...][blank][footer] (status absent).
+	const bodyWindow = () => {
+		const out = comp.render(80);
+		const hasStatus = /lines ·/.test(out[out.length - 3] ?? "");
+		const chromeTail = hasStatus ? 4 : 2; // [blank][status][blank][footer] | [blank][footer]
+		return out.slice(2, out.length - chromeTail);
+	};
+	const top = bodyWindow();
+	press(log, "\x1b[A"); // Up at top: stays
+	assert.deepEqual(bodyWindow(), top, "up at top is a no-op");
+	press(log, "\x1b[B"); // Down one row
+	const oneDown = bodyWindow();
+	assert.notDeepEqual(oneDown, top, "down moves the body window");
+	press(log, "\x1b[A"); // Up one row: back
+	assert.deepEqual(bodyWindow(), top, "up returns exactly one row");
+	press(log, "\x1b[H"); // Home
+	assert.deepEqual(bodyWindow(), top, "home returns to top");
+	for (let i = 0; i < 200; i++) press(log, "\x1b[B"); // hammer down
+	const bottom = bodyWindow();
+	assert.match(comp.render(80).at(-1)!, /close/, "footer last after hammering down");
+	press(log, "\x1b[F"); // End at bottom
+	assert.deepEqual(bodyWindow(), bottom, "end at bottom is stable (no overshoot)");
+	// Content-completeness invariant: walking down from the top visits every
+	// scroll position — each window head is a distinct body row (a skipped
+	// row would mean truncation). With 21 rows and a 13-row window there are
+	// 9 positions; the walk must visit each exactly.
+	press(log, "\x1b[H");
+	const firsts = new Set<string>();
+	for (let i = 0; i < 200; i++) {
+		firsts.add(bodyWindow()[0] ?? "");
+		press(log, "\x1b[B");
+	}
+	const statusLine = comp.render(80).find((l) => /lines ·/.test(l));
+	const m = statusLine?.match(/(\d+)\/(\d+) lines/);
+	if (m) {
+		const total = Number(m[2]);
+		const winLen = bodyWindow().length;
+		const positions = Math.max(1, total - winLen + 1);
+		assert.equal(firsts.size, positions, `each scroll position visited; got ${firsts.size} of ${positions}`);
+	}
+	// End window is stable: twice pressing End yields the same window.
+	press(log, "\x1b[F");
+	const end1 = bodyWindow();
+	press(log, "\x1b[F");
+	assert.deepEqual(bodyWindow(), end1, "end is stable");
 });
 
 // ---------------------------------------------------------------------------
@@ -181,13 +235,13 @@ test("colored theme: narrow widths never emit ANSI fragments", async () => {
 	ctx.ui.theme = theme;
 	await pi.runCommand("deepseek-balance", "", ctx);
 	const comp = log.overlay!.component!;
-	for (const width of [40, 20, 12, 8]) {
+	for (const width of [40, 20, 12, 8, 5, 3]) {
 		const out = comp.render(width);
 		for (const line of out) {
-			// Every escape must be a complete sequence: no dangling partial.
-			if (line.includes("\x1b[")) {
-				assert.match(line, /^(?:\s*\x1b\[[0-9;]*m)+/, `width ${width}: ANSI not at start or incomplete: ${JSON.stringify(line)}`);
-			}
+			// After removing complete SGR sequences, no ESC may remain: any
+			// leftover byte means a fragmented escape sequence escaped.
+			const stripped = line.replace(/\x1b\[[0-9;]*m/g, "");
+			assert.ok(!stripped.includes("\x1b"), `width ${width}: fragmented escape: ${JSON.stringify(line)}`);
 		}
 	}
 });

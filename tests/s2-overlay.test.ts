@@ -159,8 +159,8 @@ test("createOverlayComponent: output never exceeds the row budget at any width",
 	const kb = { matches: () => false };
 	const body = Array.from({ length: 60 }, (_, i) => `row ${i} 余额 long data here`);
 	const id = { fg: (_r: string, t: string) => t };
-	for (const rows of [9, 12, 25, 50]) {
-		const budget = Math.max(10, Math.floor(rows * 0.8));
+	for (const rows of [6, 9, 12, 25, 50]) {
+		const budget = Math.max(1, Math.floor(rows * 0.8));
 		for (const width of [80, 40, 20, 10, 5, 3]) {
 			const c = createOverlayComponent({
 				header: "DeepSeek 余额",
@@ -196,7 +196,7 @@ test("createOverlayComponent: resize shrinks the budget live (footer preserved)"
 	});
 	rows = 12; // terminal shrinks
 	const out = c.render(80);
-	const budget = Math.max(10, Math.floor(rows * 0.8));
+	const budget = Math.max(1, Math.floor(rows * 0.8));
 	assert.ok(out.length <= budget, `after shrink: ${out.length} > ${budget}`);
 	assert.match(out.at(-1)!, /close/, "footer still last after shrink");
 });

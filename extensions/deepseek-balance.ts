@@ -432,13 +432,6 @@ function colorRole(
 	return "success";
 }
 
-export function renderBar(fraction: number, theme: FooterTheme, role: string): string {
-	const width = 8;
-	const clamped = Math.max(0, Math.min(1, Number.isFinite(fraction) ? fraction : 0));
-	const filled = Math.round(clamped * width);
-	return theme.fg(role, "█".repeat(filled)) + theme.fg("dim", "░".repeat(width - filled));
-}
-
 export interface FooterOpts {
 	now: number;
 	stale?: boolean;
@@ -454,25 +447,16 @@ export function renderFooter(balance: Balance, row: CurrencyRow, opts: FooterOpt
 	}
 	const sym = currencySymbol(row.currency);
 	const role = colorRole(row, opts.rate ?? null, opts.thresholds ?? { warn: DEFAULT_WARN_CNY, error: DEFAULT_ERROR_CNY });
-	// Bar fraction: runway-normalized when a rate exists (12h = full bar),
-	// else balance vs the warn threshold band (error..warn..comfort).
-	let fraction: number;
-	if (opts.rate && opts.rate.currency === row.currency && opts.rate.perHour > 0) {
-		fraction = (row.total / opts.rate.perHour) / 12;
-	} else {
-		const warn = opts.thresholds?.warn ?? DEFAULT_WARN_CNY;
-		fraction = Math.min(1, row.total / (warn * 3));
-	}
 	const stale = opts.stale ? "~" : "";
 	const pct = `${formatAmount(row.total)}${stale}`;
-	// Readable runway suffix once a same-currency rate exists (the bar's
-	// normalization stays implicit; this makes it explicit).
+	// Runway suffix once a same-currency rate exists — the only footer datum
+	// not derivable from the amount itself.
 	let runway = "";
 	if (opts.rate && opts.rate.currency === row.currency && opts.rate.perHour > 0) {
 		const hours = runwayHours(row.total, opts.rate.perHour);
 		if (hours !== null) runway = ` ${theme.fg("dim", `≈ ${formatRunway(hours)}`)}`;
 	}
-	return `DS ${sym} ${renderBar(fraction, theme, role)} ${theme.fg(role, pct)}${runway}`;
+	return `DS ${sym}${theme.fg(role, pct)}${runway}`;
 }
 
 // ---------------------------------------------------------------------------

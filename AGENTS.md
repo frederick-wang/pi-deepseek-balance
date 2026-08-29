@@ -10,7 +10,7 @@ A [pi coding agent](https://github.com/earendil-works/pi-mono) extension that sh
 - **Zero runtime dependencies.** No runtime value imports from `@earendil-works/pi-*` packages (`--omit=dev` installs break otherwise); the overlay renders plain text and compares raw key bytes.
 - **Single extension file** (`extensions/deepseek-balance.ts`); the message catalog lives in it.
 - **Currency is a correctness boundary**: never index the first `balance_infos` row, never sum rows, never convert between currencies. Burn rate is computed within one currency only.
-- **Burn-rate honesty**: the rate is account-wide, gated (≥3 snapshots, ≥1 h, post-top-up window), and labeled an estimate. Runway projection stays out until real data validates the estimator.
+- **Burn-rate honesty**: the rate is account-wide, gated (≥3 snapshots, ≥1 h, post-top-up window), and labeled an estimate. The footer shows only the current-rate runway estimate (`≈ N h`); long-horizon projections stay out until real data validates the estimator.
 
 ## Hard-won implementation notes (carried from pi-glm-usage + this project)
 

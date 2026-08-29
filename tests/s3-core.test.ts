@@ -250,13 +250,25 @@ test("footer shows a readable runway suffix once a same-currency rate exists", a
 	assert.doesNotMatch(wrongCurrency, /≈/);
 });
 
-test("footer: currency symbol has breathing room before the bar", async () => {
+test("footer: exact layout — symbol glued to amount, runway suffix, stale marker", async () => {
 	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
 	const id = { fg: (_r: string, t: string) => t };
 	const bal = { available: true, rows: [{ currency: "CNY", total: 90, granted: 0, toppedUp: 90 }] };
-	const out = renderFooter(bal, bal.rows[0], { now: 0, theme: id });
-	assert.match(out, /^DS ¥ █/, `got: ${out}`);
-	assert.doesNotMatch(out, /¥█/, "bar must not touch the symbol");
+	const row = bal.rows[0];
+	// Symbol and amount are one unit for ¥ and $; the layout regression the
+	// 0.1.2 guard caught was the gauge touching the symbol — the gauge is gone,
+	// the exact strings below pin the whole footer shape.
+	assert.equal(renderFooter(bal, row, { now: 0, theme: id }), "DS ¥90.00");
+	assert.equal(renderFooter(bal, row, { now: 0, theme: id, rate: { currency: "CNY", perHour: 10 } }), "DS ¥90.00 ≈ 9.0h");
+	assert.equal(renderFooter(bal, row, { now: 0, theme: id, stale: true }), "DS ¥90.00~");
+	assert.equal(
+		renderFooter(bal, row, { now: 0, theme: id, stale: true, rate: { currency: "CNY", perHour: 10 } }),
+		"DS ¥90.00~ ≈ 9.0h",
+	);
+	// A fallback-symbol currency keeps its own spelling: currencySymbol ends
+	// with a space by design, so the amount is separated there.
+	const hkd = { available: true, rows: [{ currency: "HKD", total: 90, granted: 0, toppedUp: 90 }] };
+	assert.equal(renderFooter(hkd, hkd.rows[0], { now: 0, theme: id }), "DS HKD 90.00");
 });
 
 test("snapshot store compacts at 1000 lines to the newest 500", async () => {

@@ -411,7 +411,11 @@ export interface FooterTheme {
 
 const identityTheme: FooterTheme = { fg: (_role, text) => text };
 
-function colorRole(balance: CurrencyRow, rate: { currency: string; perHour: number } | null): string {
+function colorRole(
+	balance: CurrencyRow,
+	rate: { currency: string; perHour: number } | null,
+	thresholds: { warn: number; error: number },
+): string {
 	// Runway-based coloring once a same-currency rate exists…
 	if (rate && rate.currency === balance.currency && rate.perHour > 0) {
 		const hours = balance.total / rate.perHour;
@@ -419,11 +423,12 @@ function colorRole(balance: CurrencyRow, rate: { currency: string; perHour: numb
 		if (hours < 12) return "warning";
 		return "success";
 	}
-	// …absolute bootstrap thresholds otherwise (CNY defaults).
-	if (balance.currency === "CNY") {
-		if (balance.total < DEFAULT_ERROR_CNY) return "error";
-		if (balance.total < DEFAULT_WARN_CNY) return "warning";
-	}
+	// …absolute thresholds otherwise — the configured ones (0 = tier disabled,
+	// so "0,0" really disables), boundary-inclusive like evaluateAlerts, applied
+	// to the selected row regardless of currency — notifications never gated on
+	// currency, and color follows them.
+	if (thresholds.error > 0 && balance.total <= thresholds.error) return "error";
+	if (thresholds.warn > 0 && balance.total <= thresholds.warn) return "warning";
 	return "success";
 }
 
@@ -448,7 +453,7 @@ export function renderFooter(balance: Balance, row: CurrencyRow, opts: FooterOpt
 		return theme.fg("error", "DS unavailable");
 	}
 	const sym = currencySymbol(row.currency);
-	const role = colorRole(row, opts.rate ?? null);
+	const role = colorRole(row, opts.rate ?? null, opts.thresholds ?? { warn: DEFAULT_WARN_CNY, error: DEFAULT_ERROR_CNY });
 	// Bar fraction: runway-normalized when a rate exists (12h = full bar),
 	// else balance vs the warn threshold band (error..warn..comfort).
 	let fraction: number;
@@ -690,11 +695,11 @@ export function evaluateAlerts(
 		warned = false;
 		errored = false;
 	}
-	if (total <= thresholds.error) {
+	if (total <= thresholds.error && thresholds.error > 0) {
 		if (!errored) emitted.push({ tier: "error" });
 		errored = true;
 		warned = true;
-	} else if (total <= thresholds.warn) {
+	} else if (total <= thresholds.warn && thresholds.warn > 0) {
 		if (!warned) emitted.push({ tier: "warn" });
 		warned = true;
 	}

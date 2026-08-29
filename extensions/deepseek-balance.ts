@@ -411,7 +411,11 @@ export interface FooterTheme {
 
 const identityTheme: FooterTheme = { fg: (_role, text) => text };
 
-function colorRole(balance: CurrencyRow, rate: { currency: string; perHour: number } | null): string {
+function colorRole(
+	balance: CurrencyRow,
+	rate: { currency: string; perHour: number } | null,
+	thresholds: { warn: number; error: number },
+): string {
 	// Runway-based coloring once a same-currency rate exists…
 	if (rate && rate.currency === balance.currency && rate.perHour > 0) {
 		const hours = balance.total / rate.perHour;
@@ -419,11 +423,11 @@ function colorRole(balance: CurrencyRow, rate: { currency: string; perHour: numb
 		if (hours < 12) return "warning";
 		return "success";
 	}
-	// …absolute bootstrap thresholds otherwise (CNY defaults).
-	if (balance.currency === "CNY") {
-		if (balance.total < DEFAULT_ERROR_CNY) return "error";
-		if (balance.total < DEFAULT_WARN_CNY) return "warning";
-	}
+	// …absolute thresholds otherwise — the configured ones, boundary-inclusive
+	// like evaluateAlerts, applied to the selected row regardless of currency
+	// (notifications have no currency gate either; color must agree with them).
+	if (balance.total <= thresholds.error) return "error";
+	if (balance.total <= thresholds.warn) return "warning";
 	return "success";
 }
 
@@ -448,7 +452,7 @@ export function renderFooter(balance: Balance, row: CurrencyRow, opts: FooterOpt
 		return theme.fg("error", "DS unavailable");
 	}
 	const sym = currencySymbol(row.currency);
-	const role = colorRole(row, opts.rate ?? null);
+	const role = colorRole(row, opts.rate ?? null, opts.thresholds ?? { warn: DEFAULT_WARN_CNY, error: DEFAULT_ERROR_CNY });
 	// Bar fraction: runway-normalized when a rate exists (12h = full bar),
 	// else balance vs the warn threshold band (error..warn..comfort).
 	let fraction: number;

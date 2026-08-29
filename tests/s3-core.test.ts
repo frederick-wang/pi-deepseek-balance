@@ -138,6 +138,71 @@ test("selectRow: positive CNY beats an earlier positive USD row", () => {
 	assert.equal(selectRow(b!)?.currency, "CNY", "ordering is by rule, not array order");
 });
 
+// Captures the role passed to theme.fg so tests can assert footer coloring.
+const roleProbe = () => {
+	const roles: string[] = [];
+	return {
+		theme: { fg: (role: string, text: string) => { roles.push(role); return text; } },
+		roles,
+	};
+};
+
+const bal0 = (total: number, currency = "CNY") => ({
+	available: true,
+	rows: [{ currency, total, granted: 0, toppedUp: total }],
+});
+
+test("footer color: configured thresholds drive the absolute branch", async () => {
+	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
+	const th = { warn: 50, error: 10 };
+	const p = roleProbe();
+	const out = renderFooter(bal0(43), bal0(43).rows[0], { now: 0, theme: p.theme, thresholds: th });
+	assert.match(out, /43\.00/);
+	assert.ok(p.roles.includes("warning"), "¥43 with warn=50 must be warning");
+	const e = roleProbe();
+	renderFooter(bal0(8), bal0(8).rows[0], { now: 0, theme: e.theme, thresholds: th });
+	assert.ok(e.roles.includes("error"), "¥8 with error=10 must be error");
+	const s = roleProbe();
+	renderFooter(bal0(60), bal0(60).rows[0], { now: 0, theme: s.theme, thresholds: th });
+	assert.ok(s.roles.includes("success"), "¥60 with warn=50 must be success");
+});
+
+test("footer color: thresholds apply to the selected row regardless of currency", async () => {
+	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
+	const th = { warn: 50, error: 10 };
+	const p = roleProbe();
+	const usd = bal0(43, "USD");
+	renderFooter(usd, usd.rows[0], { now: 0, theme: p.theme, thresholds: th });
+	assert.ok(p.roles.includes("warning"), "USD row must color like the notification does");
+});
+
+test("footer color: 0,0 disables the absolute branch; boundary is inclusive like evaluateAlerts", async () => {
+	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
+	const off = roleProbe();
+	renderFooter(bal0(3), bal0(3).rows[0], { now: 0, theme: off.theme, thresholds: { warn: 0, error: 0 } });
+	assert.ok(off.roles.includes("success"), "0,0 keeps a low balance green");
+	// ¥20 with warn=20: evaluateAlerts fires at <= warn; color must agree.
+	const edge = roleProbe();
+	renderFooter(bal0(20), bal0(20).rows[0], { now: 0, theme: edge.theme, thresholds: { warn: 20, error: 5 } });
+	assert.ok(edge.roles.includes("warning"), "total == warn is warning, matching evaluateAlerts");
+	const edgeErr = roleProbe();
+	renderFooter(bal0(5), bal0(5).rows[0], { now: 0, theme: edgeErr.theme, thresholds: { warn: 20, error: 5 } });
+	assert.ok(edgeErr.roles.includes("error"), "total == error is error, matching evaluateAlerts");
+});
+
+test("footer color: defaults stay ¥20 / ¥5 without config", async () => {
+	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
+	const p = roleProbe();
+	renderFooter(bal0(15), bal0(15).rows[0], { now: 0, theme: p.theme });
+	assert.ok(p.roles.includes("warning"));
+	const e = roleProbe();
+	renderFooter(bal0(3), bal0(3).rows[0], { now: 0, theme: e.theme });
+	assert.ok(e.roles.includes("error"));
+	const s = roleProbe();
+	renderFooter(bal0(30), bal0(30).rows[0], { now: 0, theme: s.theme });
+	assert.ok(s.roles.includes("success"));
+});
+
 test("footer shows a readable runway suffix once a same-currency rate exists", async () => {
 	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
 	const id = { fg: (_r: string, t: string) => t };

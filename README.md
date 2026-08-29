@@ -34,7 +34,7 @@ to any other provider.
 | `████░░░░` | 8-cell bar: runway-normalized once a burn rate exists (a full bar ≈ 12 h of runway); before that, balance against the warning band |
 | `≈ 9.0h` | estimated runway at the current burn rate, appended once a rate exists |
 | `~` | the displayed value is stale: the last refresh failed, the previous number is kept |
-| color | by runway when a rate exists (red < 2 h, yellow < 12 h); otherwise by absolute thresholds (defaults ¥20 / ¥5) |
+| color | by runway when a rate exists (red < 2 h, yellow < 12 h); otherwise by the absolute thresholds (defaults ¥20 / ¥5, configurable via `PI_DEEPSEEK_BALANCE_THRESHOLDS`) |
 
 **Currency selection** never indexes the first row: a zero USD row cannot
 mask a positive CNY row (a parser bug observed in other tools). Order:
@@ -61,7 +61,9 @@ DeepSeek balance low: ¥15.42
 
 Emitted once per downward crossing; re-armed by a top-up. Defaults warn at
 ¥20 and error at ¥5 — guesses about a typical burn, labeled as such. Override
-with `PI_DEEPSEEK_BALANCE_THRESHOLDS="20,5"` (CNY; `0,0` disables).
+with `PI_DEEPSEEK_BALANCE_THRESHOLDS="20,5"` (`0,0` disables). The same
+thresholds drive the footer amount's color, applied to the selected currency
+row — the alert notification and the footer never disagree.
 
 ### `/deepseek-balance`
 

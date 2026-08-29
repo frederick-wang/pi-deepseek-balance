@@ -119,6 +119,13 @@ test("evaluateAlerts: descending crossings emit once; top-up re-arms", () => {
 	assert.deepEqual(s5.emitted.map((e) => e.tier), ["warn"], "re-armed");
 });
 
+test("evaluateAlerts: a zero tier is disabled even at total 0", () => {
+	const off = evaluateAlerts(null, "CNY", 0, { warn: 0, error: 0 });
+	assert.equal(off.emitted.length, 0, "0,0 with total 0 stays silent");
+	const real = evaluateAlerts(null, "CNY", 0, { warn: 20, error: 5 });
+	assert.deepEqual(real.emitted.map((e) => e.tier), ["error"], "total 0 with real thresholds is error");
+});
+
 test("thresholds parsing", () => {
 	assert.deepEqual(parseThresholdsLike("20,5"), { warn: 20, error: 5 });
 	assert.deepEqual(parseThresholdsLike("5,20"), { warn: 20, error: 5 }, "order-independent");
@@ -139,10 +146,12 @@ test("selectRow: positive CNY beats an earlier positive USD row", () => {
 });
 
 // Captures the role passed to theme.fg so tests can assert footer coloring.
+// The dim role is the runway suffix's, not the amount's — filter it out so
+// the array pins exactly the amount's role.
 const roleProbe = () => {
 	const roles: string[] = [];
 	return {
-		theme: { fg: (role: string, text: string) => { roles.push(role); return text; } },
+		theme: { fg: (role: string, text: string) => { if (role !== "dim") roles.push(role); return text; } },
 		roles,
 	};
 };
@@ -181,6 +190,16 @@ test("footer color: 0,0 disables the absolute branch; boundary is inclusive like
 	const off = roleProbe();
 	renderFooter(bal0(3), bal0(3).rows[0], { now: 0, theme: off.theme, thresholds: { warn: 0, error: 0 } });
 	assert.ok(off.roles.includes("success"), "0,0 keeps a low balance green");
+	// The decisive boundary: total == 0 with 0,0 must NOT error (0 means disabled tier).
+	const zero = bal0(0);
+	const offZero = roleProbe();
+	renderFooter(zero, zero.rows[0], { now: 0, theme: offZero.theme, thresholds: { warn: 0, error: 0 } });
+	assert.ok(offZero.roles.includes("success"), "total 0 with 0,0 stays green: zero tier is disabled");
+	assert.ok(!offZero.roles.includes("error"), "total 0 with 0,0 never errors");
+	// With nonzero thresholds, total 0 IS error — that is not a disabled tier.
+	const zeroErr = roleProbe();
+	renderFooter(zero, zero.rows[0], { now: 0, theme: zeroErr.theme, thresholds: { warn: 20, error: 5 } });
+	assert.ok(zeroErr.roles.includes("error"), "total 0 with real thresholds is error");
 	// ¥20 with warn=20: evaluateAlerts fires at <= warn; color must agree.
 	const edge = roleProbe();
 	renderFooter(bal0(20), bal0(20).rows[0], { now: 0, theme: edge.theme, thresholds: { warn: 20, error: 5 } });
@@ -188,6 +207,22 @@ test("footer color: 0,0 disables the absolute branch; boundary is inclusive like
 	const edgeErr = roleProbe();
 	renderFooter(bal0(5), bal0(5).rows[0], { now: 0, theme: edgeErr.theme, thresholds: { warn: 20, error: 5 } });
 	assert.ok(edgeErr.roles.includes("error"), "total == error is error, matching evaluateAlerts");
+});
+
+test("footer color: a rate makes color runway-based, warnings stay threshold-based (by design)", async () => {
+	const { renderFooter } = await import("../extensions/deepseek-balance.ts");
+	// 4.00 with a 0.2/h rate: 20 h runway → success color, but 4 <= 5 is error for alerts.
+	const bal = bal0(4);
+	const p = roleProbe();
+	const out = renderFooter(bal, bal.rows[0], {
+		now: 0,
+		theme: p.theme,
+		rate: { currency: "CNY", perHour: 0.2 },
+		thresholds: { warn: 20, error: 5 },
+	});
+	assert.ok(p.roles.includes("success"), "runway >= 12h wins over absolute thresholds");
+	assert.ok(!p.roles.includes("warning"), "no absolute-threshold colors while a rate exists");
+	assert.match(out, /≈ 20\.0h/, `got: ${out}`);
 });
 
 test("footer color: defaults stay ¥20 / ¥5 without config", async () => {

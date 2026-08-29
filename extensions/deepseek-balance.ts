@@ -423,11 +423,12 @@ function colorRole(
 		if (hours < 12) return "warning";
 		return "success";
 	}
-	// …absolute thresholds otherwise — the configured ones, boundary-inclusive
-	// like evaluateAlerts, applied to the selected row regardless of currency
-	// (notifications have no currency gate either; color must agree with them).
-	if (balance.total <= thresholds.error) return "error";
-	if (balance.total <= thresholds.warn) return "warning";
+	// …absolute thresholds otherwise — the configured ones (0 = tier disabled,
+	// so "0,0" really disables), boundary-inclusive like evaluateAlerts, applied
+	// to the selected row regardless of currency — notifications never gated on
+	// currency, and color follows them.
+	if (thresholds.error > 0 && balance.total <= thresholds.error) return "error";
+	if (thresholds.warn > 0 && balance.total <= thresholds.warn) return "warning";
 	return "success";
 }
 
@@ -694,11 +695,11 @@ export function evaluateAlerts(
 		warned = false;
 		errored = false;
 	}
-	if (total <= thresholds.error) {
+	if (total <= thresholds.error && thresholds.error > 0) {
 		if (!errored) emitted.push({ tier: "error" });
 		errored = true;
 		warned = true;
-	} else if (total <= thresholds.warn) {
+	} else if (total <= thresholds.warn && thresholds.warn > 0) {
 		if (!warned) emitted.push({ tier: "warn" });
 		warned = true;
 	}

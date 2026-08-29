@@ -60,10 +60,15 @@ DeepSeek balance low: ¥15.42
 ```
 
 Emitted once per downward crossing; re-armed by a top-up. Defaults warn at
-¥20 and error at ¥5 — guesses about a typical burn, labeled as such. Override
-with `PI_DEEPSEEK_BALANCE_THRESHOLDS="20,5"` (`0,0` disables). The same
-thresholds drive the footer amount's color, applied to the selected currency
-row — the alert notification and the footer never disagree.
+¥20 and error at ¥5 — guesses about a typical CNY burn, labeled as such.
+Override with `PI_DEEPSEEK_BALANCE_THRESHOLDS="20,5"` (`0,0` disables; a zero
+tier is fully off, even at a zero balance). The same thresholds drive the
+footer amount's color, applied to the selected currency row — below the rate
+gate the footer and the notification use the same numbers, so they cannot
+disagree there. Once a rate exists, footer color switches to runway-based
+(rate-derived), while notifications keep using the absolute thresholds;
+that is by design: the color answers "how long until empty?", the
+notification answers "is it below my configured floor?".
 
 ### `/deepseek-balance`
 
